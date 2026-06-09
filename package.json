@@ -3,8 +3,12 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc",
+    "start": "node dist/scripts/server.js",
+    "dev": "tsx scripts/server.ts",
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
@@ -12,6 +16,7 @@
   "packageManager": "pnpm@10.25.0",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^17.4.2",
     "ethers": "^6.16.0",
     "zod": "^4.4.3"
   },
