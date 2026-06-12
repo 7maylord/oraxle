@@ -1,10 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
 
+// Expose provider instance so individual tests can configure getLogs
+const mockProviderInstance = {
+  getBlockNumber: vi.fn().mockResolvedValue(10_000),
+  getLogs:        vi.fn().mockResolvedValue([]),
+};
+
 vi.mock("ethers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("ethers")>();
   return {
     ...actual,
-    JsonRpcProvider: vi.fn().mockImplementation(function() { return {}; }),
+    JsonRpcProvider: vi.fn().mockImplementation(function() { return mockProviderInstance; }),
     Contract: vi.fn(),
   };
 });
@@ -15,31 +21,32 @@ import {
   getPriceHistory, getDepegAlert, comparePrices,
 } from "../scripts/oracle.js";
 
-const NOW = Math.floor(Date.now() / 1000);
+const NOW  = Math.floor(Date.now() / 1000);
+const E18  = 10n ** 18n;
 
 function mockFeed(answer: bigint, updatedAt = NOW) {
   (Contract as unknown as ReturnType<typeof vi.fn>).mockImplementation(function() {
     return {
-      latestRoundData: vi.fn().mockResolvedValue([10n, answer, BigInt(NOW), BigInt(updatedAt), 10n]),
-      getRoundData:    vi.fn().mockResolvedValue([10n, answer, BigInt(NOW), BigInt(updatedAt), 10n]),
+      latestAnswer:    vi.fn().mockResolvedValue(answer),
+      latestTimestamp: vi.fn().mockResolvedValue(BigInt(updatedAt)),
     };
   });
 }
 
-// Used by comparePrices tests — returns different answers per feed address
+// Returns different answers per feed address — used by comparePrices tests
 function mockFeedWithAddress(addressToAnswer: Record<string, bigint>, updatedAt = NOW) {
   (Contract as unknown as ReturnType<typeof vi.fn>).mockImplementation(function(addr: string) {
-    const answer = addressToAnswer[addr] ?? 1_00000000n;
+    const answer = addressToAnswer[addr] ?? 1n * E18;
     return {
-      latestRoundData: vi.fn().mockResolvedValue([10n, answer, BigInt(NOW), BigInt(updatedAt), 10n]),
-      getRoundData:    vi.fn().mockResolvedValue([10n, answer, BigInt(NOW), BigInt(updatedAt), 10n]),
+      latestAnswer:    vi.fn().mockResolvedValue(answer),
+      latestTimestamp: vi.fn().mockResolvedValue(BigInt(updatedAt)),
     };
   });
 }
 
 describe("getPrice", () => {
   it("returns correct price for BTC/USD", async () => {
-    mockFeed(6_500000000000n);
+    mockFeed(65_000n * E18);
     const r = await getPrice("BTC/USD");
     expect(r).not.toHaveProperty("code");
     if (!("code" in r)) expect(r.price).toBe("65000");
@@ -60,21 +67,22 @@ describe("getPrice", () => {
   });
 
   it("returns FEED_STALE when feed is too old", async () => {
-    mockFeed(6_500000000000n, NOW - 7200);
+    mockFeed(65_000n * E18, NOW - 7200); // 2h old vs 5400s max
     expect(await getPrice("BTC/USD")).toMatchObject({ code: "FEED_STALE" });
   });
 
-  it("includes source chainlink-sepolia", async () => {
-    mockFeed(6_500000000000n);
+  it("includes source chainlink-pharos-atlantic", async () => {
+    mockFeed(65_000n * E18);
     const r = await getPrice("BTC/USD");
-    if (!("code" in r)) expect(r.source).toBe("chainlink-sepolia");
+    if (!("code" in r)) expect(r.source).toBe("chainlink-pharos-atlantic");
   });
 });
 
 describe("getStalenessReport", () => {
   it("returns live for fresh feed", async () => {
-    mockFeed(6_500000000000n, NOW);
+    mockFeed(65_000n * E18, NOW);
     const r = await getStalenessReport("BTC/USD");
+    expect(r).not.toHaveProperty("code");
     if (!("code" in r)) {
       expect(r.status).toBe("live");
       expect(r.isStale).toBe(false);
@@ -82,7 +90,7 @@ describe("getStalenessReport", () => {
   });
 
   it("returns stale for old feed", async () => {
-    mockFeed(6_500000000000n, NOW - 7200);
+    mockFeed(65_000n * E18, NOW - 7200);
     const r = await getStalenessReport("BTC/USD");
     if (!("code" in r)) expect(r.status).toBe("stale");
   });
@@ -94,7 +102,7 @@ describe("getStalenessReport", () => {
 
 describe("getMultiPrice", () => {
   it("returns array in same order as input", async () => {
-    mockFeed(6_500000000000n);
+    mockFeed(65_000n * E18);
     const r = await getMultiPrice(["BTC/USD", "ETH/USD"]);
     expect(r).toHaveLength(2);
     expect(r[0]).toMatchObject({ assetKey: "BTC/USD" });
@@ -118,52 +126,40 @@ describe("listFeeds", () => {
 });
 
 describe("getPriceHistory", () => {
-  it("returns history array up to requested length", async () => {
-    mockFeed(6_500000000000n);
-    const r = await getPriceHistory("BTC/USD", 3);
-    if (!("code" in r)) {
-      expect(r.assetKey).toBe("BTC/USD");
-      expect(r.rounds).toBeGreaterThan(0);
-      expect(r.history).toHaveLength(r.rounds);
-      expect(r.source).toBe("chainlink-sepolia");
-    }
-  });
-
-  it("every history point has required fields", async () => {
-    mockFeed(6_500000000000n);
-    const r = await getPriceHistory("BTC/USD", 2);
-    if (!("code" in r)) {
-      r.history.forEach(p => {
-        expect(p).toHaveProperty("roundId");
-        expect(p).toHaveProperty("price");
-        expect(p).toHaveProperty("updatedAt");
-        expect(p).toHaveProperty("updatedAtIso");
-      });
-    }
-  });
-
   it("returns FEED_NOT_FOUND for unknown key", async () => {
     expect(await getPriceHistory("FAKE/USD", 5)).toMatchObject({ code: "FEED_NOT_FOUND" });
+  });
+
+  it("returns structured result with empty history when no logs found", async () => {
+    mockProviderInstance.getLogs.mockResolvedValueOnce([]);
+    const r = await getPriceHistory("BTC/USD", 5);
+    expect(r).not.toHaveProperty("code");
+    if (!("code" in r)) {
+      expect(r.assetKey).toBe("BTC/USD");
+      expect(r.source).toBe("chainlink-pharos-atlantic");
+      expect(Array.isArray(r.history)).toBe(true);
+      expect(r.rounds).toBe(r.history.length);
+    }
   });
 });
 
 describe("getDepegAlert", () => {
   it("returns healthy when on-peg", async () => {
-    mockFeed(1_00000000n); // $1.00
-    const r = await getDepegAlert("DAI/USD");
+    mockFeed(1n * E18); // $1.00
+    const r = await getDepegAlert("USDC/USD");
     expect(r).not.toHaveProperty("code");
     if (!("code" in r)) expect(r.status).toBe("healthy");
   });
 
   it("returns warning for small depeg (60 bps)", async () => {
-    mockFeed(99400000n); // $0.994 → 60 bps off peg
-    const r = await getDepegAlert("DAI/USD", 1.0, 50, 100);
+    mockFeed(994n * E18 / 1000n); // $0.994 — 60 bps off peg
+    const r = await getDepegAlert("USDC/USD", 1.0, 50, 100);
     if (!("code" in r)) expect(r.status).toBe("warning");
   });
 
   it("returns critical for large depeg (200 bps)", async () => {
-    mockFeed(98000000n); // $0.98 → 200 bps off peg
-    const r = await getDepegAlert("DAI/USD", 1.0, 50, 100);
+    mockFeed(98n * E18 / 100n); // $0.98 — 200 bps off peg
+    const r = await getDepegAlert("USDC/USD", 1.0, 50, 100);
     if (!("code" in r)) expect(r.status).toBe("critical");
   });
 
@@ -174,17 +170,17 @@ describe("getDepegAlert", () => {
 
 describe("comparePrices", () => {
   it("returns correct ratio using BigInt arithmetic", async () => {
-    // XAU $2000, ETH $800 → ratio = 2.500000
+    // BTC $2000, ETH $800 → ratio = 2.500000
     mockFeedWithAddress({
-      "0xC5981F461d74c46eB4b0CF3f4Ec79f025573B0Ea": 2000_00000000n, // XAU/USD
-      "0x694AA1769357215DE4FAC081bf1f309aDC325306":  800_00000000n, // ETH/USD
+      "0x82d0e03ea6d94120B92EA4Ea236DcFA273D42994": 2_000n * E18, // BTC/USD
+      "0xCd47D1843f3D6313836303fE1434BA26D257d500":   800n * E18, // ETH/USD
     });
-    const r = await comparePrices("XAU/USD", "ETH/USD");
+    const r = await comparePrices("BTC/USD", "ETH/USD");
     expect(r).not.toHaveProperty("code");
     if (!("code" in r)) {
       expect(r.ratio).toBe("2.500000");
-      expect(r.meaning).toBe("1 XAU = 2.5000 ETH");
-      expect(r.baseKey).toBe("XAU/USD");
+      expect(r.meaning).toBe("1 BTC = 2.5000 ETH");
+      expect(r.baseKey).toBe("BTC/USD");
       expect(r.quoteKey).toBe("ETH/USD");
     }
   });

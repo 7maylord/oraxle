@@ -1,13 +1,11 @@
 import { STALENESS_TOLERANCE } from "./config.js";
 import type { FeedConfig, OracleError } from "./types.js";
 
-export function validateRoundData(
+export function validatePriceData(
   assetKey: string,
   cfg: FeedConfig,
-  roundId: bigint,
   answer: bigint,
   updatedAt: bigint,
-  answeredInRound: bigint,
 ): OracleError | null {
 
   if (answer <= 0n) {
@@ -26,20 +24,12 @@ export function validateRoundData(
     };
   }
 
-  if (answeredInRound < roundId) {
-    return {
-      code: "INCOMPLETE_ROUND",
-      assetKey,
-      roundId:         roundId.toString(),
-      answeredInRound: answeredInRound.toString(),
-    };
-  }
-
   return null;
 }
 
+// Use 10n**BigInt(decimals) — safe for 18 decimals where 10**18 exceeds Number.MAX_SAFE_INTEGER
 export function toHumanPrice(raw: bigint, decimals: number): string {
-  const divisor = BigInt(10 ** decimals);
+  const divisor = 10n ** BigInt(decimals);
   const whole   = raw / divisor;
   const frac    = raw % divisor;
   const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");

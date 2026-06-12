@@ -11,7 +11,6 @@ export interface PriceResult {
   price:        string;
   updatedAt:    number;
   updatedAtIso: string;
-  roundId:      string;
   isStale:      boolean;
   source:       string;
 }
@@ -74,5 +73,4 @@ export type OracleError =
   | { code: "FEED_NOT_FOUND";   assetKey: string }
   | { code: "FEED_STALE";       assetKey: string; ageSeconds: number; maxAgeSeconds: number }
   | { code: "INVALID_ANSWER";   assetKey: string; answer: string }
-  | { code: "INCOMPLETE_ROUND"; assetKey: string; roundId: string; answeredInRound: string }
   | { code: "RPC_ERROR";        message: string };
