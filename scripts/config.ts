@@ -1,8 +1,6 @@
-import "dotenv/config";
 import type { FeedConfig } from "./types.js";
 
-export const PHAROS_RPC =
-  process.env.PHAROS_RPC_URL ?? "https://atlantic.dplabs-internal.com";
+export const PHAROS_RPC = "https://atlantic.dplabs-internal.com";
 
 export const STALENESS_TOLERANCE = 1.5;
 

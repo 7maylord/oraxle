@@ -1,22 +1,21 @@
 {
-  "name": "oraxle",
+  "name": "oraxle-skill",
   "version": "1.0.0",
-  "description": "",
+  "description": "Verified Chainlink price feeds for Pharos agents via the Push Engine on Atlantic Testnet",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/scripts/server.js",
+    "start": "tsx scripts/server.ts",
     "dev": "tsx scripts/server.ts",
     "test": "vitest run"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["pharos", "chainlink", "oracle", "mcp", "agent-skill"],
+  "author": "olumide",
+  "license": "MIT",
   "packageManager": "pnpm@10.25.0",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "dotenv": "^17.4.2",
     "ethers": "^6.16.0",
     "zod": "^4.4.3"
   },
