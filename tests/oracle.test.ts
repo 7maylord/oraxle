@@ -19,6 +19,7 @@ import { Contract } from "ethers";
 import {
   getPrice, getStalenessReport, getMultiPrice, listFeeds,
   getPriceHistory, getDepegAlert, comparePrices,
+  getFeedId, batchStalenessCheck, getCcipConfig,
 } from "../scripts/oracle.js";
 
 const NOW  = Math.floor(Date.now() / 1000);
@@ -191,5 +192,65 @@ describe("comparePrices", () => {
 
   it("returns error if quote feed not found", async () => {
     expect(await comparePrices("ETH/USD", "FAKE/USD")).toMatchObject({ code: "FEED_NOT_FOUND" });
+  });
+});
+
+describe("getFeedId", () => {
+  it("returns feedId and address for known asset", () => {
+    const r = getFeedId("BTC/USD");
+    expect(r).not.toHaveProperty("code");
+    if (!("code" in r)) {
+      expect(r.feedId).toMatch(/^0x[0-9a-f]{64}$/);
+      expect(r.address).toMatch(/^0x[0-9a-fA-F]{40}$/);
+      expect(r.assetKey).toBe("BTC/USD");
+    }
+  });
+
+  it("returns FEED_NOT_FOUND for unknown key", () => {
+    expect(getFeedId("FAKE/USD")).toMatchObject({ code: "FEED_NOT_FOUND" });
+  });
+
+  it("WBTC/USD has a feedId", () => {
+    const r = getFeedId("WBTC/USD");
+    expect(r).not.toHaveProperty("code");
+  });
+});
+
+describe("batchStalenessCheck", () => {
+  it("returns allLive true when all feeds are fresh", async () => {
+    mockFeed(65_000n * E18, NOW);
+    const r = await batchStalenessCheck(["BTC/USD", "ETH/USD"]);
+    expect(r.allLive).toBe(true);
+    expect(r.results).toHaveLength(2);
+  });
+
+  it("returns allLive false when any feed is stale", async () => {
+    mockFeed(65_000n * E18, NOW - 7200);
+    const r = await batchStalenessCheck(["BTC/USD", "ETH/USD"]);
+    expect(r.allLive).toBe(false);
+  });
+
+  it("results array preserves input order", async () => {
+    mockFeed(65_000n * E18, NOW);
+    const r = await batchStalenessCheck(["ETH/USD", "BTC/USD"]);
+    expect(r.results[0]).toMatchObject({ assetKey: "ETH/USD" });
+    expect(r.results[1]).toMatchObject({ assetKey: "BTC/USD" });
+  });
+});
+
+describe("getCcipConfig", () => {
+  it("returns Pharos CCIP config with router and chain selector", () => {
+    const r = getCcipConfig();
+    expect(r.chainId).toBe(688689);
+    expect(r.router).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    expect(r.chainSelector).toBe("16098325658947243212");
+    expect(r.supportedLanes.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it("every lane has name and chainSelector", () => {
+    getCcipConfig().supportedLanes.forEach(lane => {
+      expect(lane).toHaveProperty("name");
+      expect(lane).toHaveProperty("chainSelector");
+    });
   });
 });

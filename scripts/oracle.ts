@@ -1,9 +1,10 @@
 import { Contract, JsonRpcProvider, id as ethersId, Interface } from "ethers";
-import { PHAROS_RPC, FEEDS, AGG_ABI, STALENESS_TOLERANCE } from "./config.js";
+import { PHAROS_RPC, FEEDS, AGG_ABI, STALENESS_TOLERANCE, CCIP } from "./config.js";
 import { validatePriceData, toHumanPrice } from "./validate.js";
 import type {
   PriceResult, StalenessResult, FeedInfo, OracleError,
   PricePoint, PriceHistoryResult, DepegAlertResult, ComparisonResult,
+  FeedIdResult, BatchStalenessResult, CcipConfigResult,
 } from "./types.js";
 
 let _provider: JsonRpcProvider | null = null;
@@ -91,7 +92,43 @@ export function listFeeds(): FeedInfo[] {
     heartbeat:   cfg.heartbeat,
     active:      cfg.active,
     address:     cfg.address,
+    feedId:      cfg.feedId,
   }));
+}
+
+// ── get_feed_id ───────────────────────────────────────────────────────────────
+
+export function getFeedId(assetKey: string): FeedIdResult | OracleError {
+  const cfg = FEEDS[assetKey];
+  if (!cfg || !cfg.active) return { code: "FEED_NOT_FOUND", assetKey };
+  return { assetKey, feedId: cfg.feedId, address: cfg.address };
+}
+
+// ── batch_staleness_check ─────────────────────────────────────────────────────
+
+export async function batchStalenessCheck(
+  assetKeys: string[],
+): Promise<BatchStalenessResult> {
+  const results = await Promise.all(assetKeys.map(getStalenessReport));
+  const allLive = results.every(
+    (r) => !("code" in r) && !r.isStale,
+  );
+  return { results: results as StalenessResult[], allLive };
+}
+
+// ── get_ccip_config ───────────────────────────────────────────────────────────
+
+export function getCcipConfig(): CcipConfigResult {
+  return {
+    network:             "Pharos Atlantic Testnet",
+    chainId:             688689,
+    chainSelector:       CCIP.chainSelector,
+    router:              CCIP.router,
+    onRamp:              CCIP.onRamp,
+    linkToken:           CCIP.linkToken,
+    tokenAdminRegistry:  CCIP.tokenAdminRegistry,
+    supportedLanes:      [...CCIP.supportedLanes],
+  };
 }
 
 // ── get_price_history — via AnswerUpdated events ──────────────────────────────

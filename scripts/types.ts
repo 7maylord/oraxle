@@ -1,5 +1,6 @@
 export interface FeedConfig {
   address:     string;
+  feedId:      string;
   heartbeat:   number;
   decimals:    number;
   description: string;
@@ -31,6 +32,34 @@ export interface FeedInfo {
   heartbeat:   number;
   active:      boolean;
   address:     string;
+  feedId:      string;
+}
+
+export interface FeedIdResult {
+  assetKey: string;
+  feedId:   string;
+  address:  string;
+}
+
+export interface BatchStalenessResult {
+  results: StalenessResult[];
+  allLive: boolean;
+}
+
+export interface CcipLane {
+  name:          string;
+  chainSelector: string;
+}
+
+export interface CcipConfigResult {
+  network:          string;
+  chainId:          number;
+  chainSelector:    string;
+  router:           string;
+  onRamp:           string;
+  linkToken:        string;
+  supportedLanes:   CcipLane[];
+  tokenAdminRegistry: string;
 }
 
 export interface PricePoint {
